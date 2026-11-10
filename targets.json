@@ -1,0 +1,8 @@
+{
+  "_note": "SAMPLE ENTRIES ONLY - replace with your real captures. ra and dec are in degrees (RA hours x 15). rot is the camera rotation in degrees; w/h (degrees) are optional per-target field-of-view overrides.",
+  "targets": [
+    { "name": "Sample: Ring Nebula (M57)", "ra": 283.396, "dec": 33.029, "rot": 0, "filters": "SHO", "date": "sample" },
+    { "name": "Sample: Dumbbell Nebula (M27)", "ra": 299.901, "dec": 22.721, "rot": 25, "filters": "SHO", "date": "sample" },
+    { "name": "Sample: Helix Nebula (NGC 7293)", "ra": 337.411, "dec": -20.837, "rot": 90, "filters": "LRGB", "date": "sample" }
+  ]
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Map · Captured Targets</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@0.7.35/celestial.css">
+<style>
+  :root { --night:#080d17; --ink:#dfe5ef; --dim:#8a96ab; --frame:#5fd0c4; --limit:#c9a24b; --edge:#222c42; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--night); color:var(--ink); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width:1200px; margin:0 auto; padding:16px; }
+  h1 { font:600 1.5rem/1.2 Georgia,"Iowan Old Style",serif; margin:0 0 4px; }
+  .sub { color:var(--dim); margin:0 0 14px; max-width:60ch; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  #celestial-map { min-height:320px; border:1px solid var(--edge); }
+  aside { border:1px solid var(--edge); max-height:70vh; overflow:auto; }
+  ul { list-style:none; margin:0; padding:0; }
+  li button { all:unset; display:block; width:100%; padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--edge); }
+  li button:hover, li button:focus-visible { background:#121a2b; outline:2px solid var(--frame); outline-offset:-2px; }
+  li small { display:block; color:var(--dim); }
+  .key { color:var(--dim); font-size:.85rem; margin-top:10px; }
+  .key b { display:inline-block; width:22px; height:0; border-top:2px solid var(--frame); vertical-align:middle; margin-right:6px; }
+  .key b.l { border-top:2px dashed var(--limit); margin-left:14px; }
+  @media (max-width:760px) { .layout { grid-template-columns:1fr; } aside { max-height:40vh; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Where the telescope has pointed</h1>
+  <p class="sub" id="count">Loading targets…</p>
+  <div class="layout">
+    <div id="celestial-map"></div>
+    <aside><ul id="list"></ul></aside>
+  </div>
+  <p class="key"><b></b>Captured frame (true size and rotation)<b class="l"></b>Southern limit: never rises at the site</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@0.7.35/lib/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@0.7.35/lib/d3.geo.projection.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@0.7.35/celestial.min.js"></script>
+<script>
+// ---- Settings: edit these ----
+var SITE   = { lat: 36.5, lon: -117.1 };   // approximate; used for the southern limit line
+var SENSOR = { w: 0.82, h: 0.55 };         // field of view in degrees (ASI2600MM + EdgeHD 9.25" w/ 0.7x reducer; adjust to match yours)
+var LIMIT  = -(90 - SITE.lat);             // declination that never clears the horizon
+var DATA   = "https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@0.7.35/data/";
+// ------------------------------
+var targets = [];
+var wrap = function (ra) { return ((ra + 180) % 360 + 360) % 360 - 180; };
+
+function frame(t) {
+  var hw = (t.w || SENSOR.w) / 2, hh = (t.h || SENSOR.h) / 2, r = (t.rot || 0) * Math.PI / 180;
+  var c = Math.cos(t.dec * Math.PI / 180);
+  var pts = [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh],[-hw,-hh]].map(function (p) {
+    var x = p[0]*Math.cos(r) - p[1]*Math.sin(r), y = p[0]*Math.sin(r) + p[1]*Math.cos(r);
+    return [wrap(t.ra + x / c), t.dec + y];
+  });
+  return { type: "Feature", geometry: { type: "LineString", coordinates: pts } };
+}
+
+var limitLine = { type: "Feature", geometry: { type: "LineString", coordinates:
+  d3.range(-180, 181, 4).map(function (lon) { return [lon, LIMIT]; }) } };
+
+Celestial.add({
+  type: "raw",
+  callback: function () {
+    d3.json("targets.json", function (err, d) {
+      if (err) { document.getElementById("count").textContent = "Could not load targets.json"; return; }
+      targets = d.targets || [];
+      document.getElementById("count").textContent = targets.length + " targets captured";
+      var ul = d3.select("#list");
+      targets.forEach(function (t) {
+        var b = ul.append("li").append("button").on("click", function () {
+          Celestial.rotate({ center: [wrap(t.ra), t.dec, 0] });
+        });
+        b.text(t.name);
+        b.append("small").text((t.filters || "") + (t.date ? " · " + t.date : ""));
+      });
+      Celestial.redraw();
+    });
+  },
+  redraw: function () {
+    var ctx = Celestial.context;
+    ctx.save();
+    ctx.setLineDash([6, 5]); ctx.strokeStyle = "#c9a24b"; ctx.lineWidth = 1;
+    ctx.beginPath(); Celestial.map(limitLine); ctx.stroke();
+    ctx.setLineDash([]); ctx.strokeStyle = "#5fd0c4"; ctx.fillStyle = "#5fd0c4"; ctx.lineWidth = 1.5;
+    ctx.font = "12px system-ui,sans-serif";
+    targets.forEach(function (t) {
+      var pos = [wrap(t.ra), t.dec];
+      if (!Celestial.clip(pos)) return;
+      ctx.beginPath(); Celestial.map(frame(t)); ctx.stroke();
+      var p = Celestial.mapProjection(pos);
+      ctx.beginPath(); ctx.arc(p[0], p[1], 3.5, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillText(t.name, p[0] + 8, p[1] + 4);
+    });
+    ctx.restore();
+  }
+});
+
+Celestial.display({
+  container: "celestial-map", width: 0, projection: "airy", transform: "equatorial",
+  center: [0, 20, 0], datapath: DATA, interactive: true, controls: true, form: false, zoomextend: 12,
+  background: { fill: "#080d17", opacity: 1, stroke: "#222c42", width: 1 },
+  stars: { limit: 6, names: false, style: { fill: "#e8ecf3", opacity: 0.9 } },
+  dsos: { show: true, limit: 6, names: false },
+  mw: { show: true, style: { fill: "#9fb4d6", opacity: 0.12 } },
+  constellations: { names: true, lines: true },
+  lines: { graticule: { show: true, stroke: "#26324d", width: 0.5, opacity: 0.6 } }
+});
+</script>
+</body>
+</html>
